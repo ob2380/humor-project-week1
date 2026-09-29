@@ -78,3 +78,46 @@ AI tool used: Claude (Sonnet 5), via Cowork with a live link to my Mac (device b
 - Create a Google OAuth client (Google Cloud Console) and enable the Google provider in the Supabase Auth dashboard with those credentials.
 - Run `supabase/migrations/0002_profiles.sql` in the Supabase SQL editor (creates the `profiles` table, trigger, and `avatars` bucket/policies).
 - Confirm Vercel deployment protection is off and grab the commit-specific deployment URL for submission.
+
+# Prompt Chain — Week 3: Auth, Profiles, and Google Sign-In
+
+AI tool used: Claude (Sonnet 5), via Cowork with a live link to my Mac (device bridge) and browser automation.
+
+## Prompts, in order
+
+1. **(Pasted the full Week 3 assignment text)** "well this is the assignment for this week so lets work on that while making sure we follow the security requirment. save those security requirments to your brain because I want to be able to do them in Dadoo and Toto as well."
+   → Claude implemented the full auth stack: `@supabase/ssr` browser/server clients, `proxy.ts` (Next 16's renamed `middleware.ts`) to refresh sessions and gate `/dashboard` and `/profile`, a `profiles` table + `auth.users` trigger migration, Google OAuth sign-in via `/auth/callback`, a profile-completion check, and a Profile page for editing name + uploading an avatar to Supabase Storage (never storing binary image data in Postgres).
+
+2. **(Screenshot of a VS Code terminal showing `git push origin main` succeeding)** "This is what i got form Claude code in VS code"
+   → Claude confirmed the push succeeded (commit `06ba781`).
+
+3. **"Tell me, why do you keep all of the project only under Week 1? ... What should I submit? we dont need to work in Claude code?"** (with a pasted OAuth/OIDC conference transcript for context)
+   → Claude explained the repo is reused across weeks per the assignment, listed exactly what to submit, and confirmed this session already satisfies the Claude-CLI requirement.
+
+4. **"ok I confirmed.. what now?"**
+   → (After Claude paused to ask permission before checking Google's "I agree to the API Services User Data Policy" box during OAuth client setup) Claude proceeded to finish creating the Google OAuth client and wire it into Supabase.
+
+5. **(Screenshot of a browser error: `localhost:3000/?code=...` and a `lightningcss.darwin-arm64.node` crash)** "I got this when I tried to log in with google"
+   → Claude diagnosed two separate bugs: (a) `node_modules` on my Mac had Linux-platform native binaries because earlier `npm install` calls ran through the device-bridge shell, which executes in an isolated Linux VM rather than my actual Mac; and (b) Supabase's Redirect URLs allowlist was completely empty, so Supabase silently redirected to the Site URL (`/`) instead of `/auth/callback`. Claude gave me exact `rm -rf node_modules package-lock.json && npm install` commands to run myself in a real Mac terminal, and fixed the Supabase Redirect URLs directly via the dashboard.
+
+6. **"ok it worked. what now?"**
+   → Claude gave a checklist to verify the full flow end-to-end before submitting.
+
+7. **(Screenshot of a new error: "Body exceeded 1 MB limit" on the Server Action)** "this is what I got now. What can I do?"
+   → Claude found that Next.js caps Server Action request bodies at 1MB by default, while the profile action already validated avatars up to 5MB. Fixed by adding `experimental.serverActions.bodySizeLimit: "6mb"` to `next.config.ts`.
+
+8. **(Screenshots showing the profile form saving successfully, and the terminal committing/pushing the fix)** "This is great- what now?"
+   → Claude confirmed the push (commit `208af38`) deployed cleanly to Vercel, verified deployment protection was off, and clicked through the full Google sign-in → dashboard → profile → avatar flow live on the production URL to confirm it works end-to-end.
+
+## What Claude did (implementation summary)
+
+- Added `@supabase/ssr` alongside the existing `@supabase/supabase-js`, with separate browser (`lib/supabase/client.ts`) and server (`lib/supabase/server.ts`) clients.
+- Added `proxy.ts` (Next 16's replacement for `middleware.ts`) calling `supabase.auth.getUser()` to refresh sessions and redirect signed-out visitors away from `/dashboard` and `/profile`.
+- Added `app/auth/callback/route.ts` to exchange the OAuth `code` for a session (registered redirect URI: exactly `/auth/callback`, no extra path segments).
+- Added Google sign-in (`app/login/`) via `supabase.auth.signInWithOAuth`.
+- Added `lib/auth.ts`, a small Data Access Layer (`getCurrentUser`, `getCurrentProfile`) so Server Actions independently re-authenticate rather than relying on proxy/middleware coverage.
+- Added `supabase/migrations/0002_profiles.sql`: a `profiles` table (nullable `first_name`/`last_name`/`avatar_url`), an `after insert on auth.users` trigger to auto-create a profile row on first sign-in, RLS left off per the assignment's own instruction, and a public `avatars` Storage bucket with per-user-folder policies.
+- Added `app/profile/` (page, form, and a `updateProfile` Server Action) to edit name and upload a photo — the photo is uploaded to Supabase Storage and only its URL is written to the `profiles` row; the binary is never stored in Postgres.
+- Added `app/dashboard/` as a protected route showing a profile-completion prompt when name fields are empty.
+- Fixed two real-world bugs found only after deploying: a stale local Turbopack cache masking a native-binary platform mismatch (`lightningcss-darwin-arm64`), and Next's default 1MB Server Action body cap rejecting profile-photo uploads.
+- Verified end-to-end on both localhost and the live Vercel production deployment: Google sign-in → `/dashboard` → `/profile` → name + avatar save, all confirmed via the Table Editor and a live browser click-through.
