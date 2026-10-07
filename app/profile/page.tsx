@@ -17,7 +17,7 @@ export default async function ProfilePage() {
     <main className="min-h-screen px-6 py-16 sm:px-12">
       <div className="mx-auto max-w-md">
         <h1 className="text-3xl font-bold">Your profile</h1>
-        <p className="mt-2 text-sm text-gray-500">Signed in as {user.email}</p>
+        <p className="mt-2 text-sm text-ink/75">Signed in as {user.email}</p>
         <ProfileForm
           profile={
             profile ?? { id: user.id, first_name: null, last_name: null, avatar_url: null }

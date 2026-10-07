@@ -20,7 +20,7 @@ export default function ProfileForm({ profile }: { profile: Profile }) {
             className="h-16 w-16 rounded-full object-cover"
           />
         ) : (
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 text-xs text-gray-400">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gray-100 text-xs text-ink/75">
             No photo
           </div>
         )}

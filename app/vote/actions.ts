@@ -70,7 +70,7 @@ export async function submitVote(
       return { error: "Couldn't save your vote. Please try again." };
     }
 
-    revalidatePath("/");
+    revalidatePath("/", "layout");
     return { success: true, vote: newValue };
   }
 
@@ -86,7 +86,7 @@ export async function submitVote(
       return { error: "Couldn't cancel your vote. Please try again." };
     }
 
-    revalidatePath("/");
+    revalidatePath("/", "layout");
     return { success: true, vote: null };
   }
 
@@ -101,6 +101,6 @@ export async function submitVote(
     return { error: "Couldn't change your vote. Please try again." };
   }
 
-  revalidatePath("/");
+  revalidatePath("/", "layout");
   return { success: true, vote: newValue };
 }

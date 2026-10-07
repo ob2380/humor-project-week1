@@ -18,7 +18,7 @@ export default function VoteButtons({ captionId, signedIn, initialVote }: Props)
   // Logged-out visitors can't rate captions.
   if (!signedIn) {
     return (
-      <Link href="/login?next=/" className="text-sm text-gray-500 underline">
+      <Link href="/login?next=/" className="chunky-btn">
         Sign in to vote
       </Link>
     );
@@ -48,11 +48,7 @@ export default function VoteButtons({ captionId, signedIn, initialVote }: Props)
           aria-label={myVote === 1 ? "Cancel upvote" : "Upvote"}
           aria-pressed={myVote === 1}
           title={myVote === 1 ? "Click again to cancel" : undefined}
-          className={`rounded-md border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
-            myVote === 1
-              ? "border-green-600 bg-green-50 text-green-700"
-              : "border-gray-300 hover:bg-gray-50"
-          }`}
+          className={`chunky-btn ${myVote === 1 ? "is-up is-pressed" : ""}`}
         >
           ▲ Up
         </button>
@@ -63,16 +59,12 @@ export default function VoteButtons({ captionId, signedIn, initialVote }: Props)
           aria-label={myVote === -1 ? "Cancel downvote" : "Downvote"}
           aria-pressed={myVote === -1}
           title={myVote === -1 ? "Click again to cancel" : undefined}
-          className={`rounded-md border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
-            myVote === -1
-              ? "border-red-600 bg-red-50 text-red-700"
-              : "border-gray-300 hover:bg-gray-50"
-          }`}
+          className={`chunky-btn ${myVote === -1 ? "is-down is-pressed" : ""}`}
         >
           ▼ Down
         </button>
       </div>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && <p className="text-xs font-bold text-[#B71C1C]">{error}</p>}
     </div>
   );
 }

@@ -7,9 +7,9 @@ export default async function LoginPage(props: PageProps<"/login">) {
 
   return (
     <main className="flex min-h-screen items-center justify-center px-6">
-      <div className="w-full max-w-sm rounded-xl border border-gray-200 p-8 text-center shadow-sm">
+      <div className="w-full max-w-sm rounded-xl border border-ink p-8 text-center shadow-sm">
         <h1 className="text-2xl font-bold">Sign in</h1>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="mt-2 text-sm text-ink/75">
           Sign in with Google to continue.
         </p>
         {authError && (

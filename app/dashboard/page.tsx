@@ -19,7 +19,7 @@ export default async function DashboardPage() {
         <h1 className="text-3xl font-bold">
           Welcome{profile?.first_name ? `, ${profile.first_name}` : ""}
         </h1>
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="mt-2 text-sm text-ink/75">
           This page is only visible to signed-in users.
         </p>
 
@@ -41,8 +41,8 @@ export default async function DashboardPage() {
         )}
 
         {complete && (
-          <div className="mt-8 rounded-xl border border-gray-200 p-5">
-            <p className="text-sm text-gray-600">
+          <div className="mt-8 rounded-xl border border-ink p-5">
+            <p className="text-sm text-ink/75">
               Signed in as {profile?.first_name} {profile?.last_name} ({user.email})
             </p>
             <Link href="/profile" className="mt-2 inline-block text-sm underline">
