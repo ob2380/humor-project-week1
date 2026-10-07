@@ -24,6 +24,8 @@ export default function VoteButtons({ captionId, signedIn, initialVote }: Props)
     );
   }
 
+  // Clicking your current vote again cancels it; clicking the other arrow
+  // switches your vote. The server decides which, and tells us the result.
   function vote(value: 1 | -1) {
     setError(null);
     startTransition(async () => {
@@ -32,11 +34,9 @@ export default function VoteButtons({ captionId, signedIn, initialVote }: Props)
         setError(result.error);
         return;
       }
-      setMyVote(value);
+      setMyVote(result.vote ?? null);
     });
   }
-
-  const hasVoted = myVote !== null;
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -44,13 +44,14 @@ export default function VoteButtons({ captionId, signedIn, initialVote }: Props)
         <button
           type="button"
           onClick={() => vote(1)}
-          disabled={pending || hasVoted}
-          aria-label="Upvote"
+          disabled={pending}
+          aria-label={myVote === 1 ? "Cancel upvote" : "Upvote"}
           aria-pressed={myVote === 1}
-          className={`rounded-md border px-3 py-1 text-sm transition disabled:cursor-not-allowed ${
+          title={myVote === 1 ? "Click again to cancel" : undefined}
+          className={`rounded-md border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
             myVote === 1
               ? "border-green-600 bg-green-50 text-green-700"
-              : "border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+              : "border-gray-300 hover:bg-gray-50"
           }`}
         >
           ▲ Up
@@ -58,13 +59,14 @@ export default function VoteButtons({ captionId, signedIn, initialVote }: Props)
         <button
           type="button"
           onClick={() => vote(-1)}
-          disabled={pending || hasVoted}
-          aria-label="Downvote"
+          disabled={pending}
+          aria-label={myVote === -1 ? "Cancel downvote" : "Downvote"}
           aria-pressed={myVote === -1}
-          className={`rounded-md border px-3 py-1 text-sm transition disabled:cursor-not-allowed ${
+          title={myVote === -1 ? "Click again to cancel" : undefined}
+          className={`rounded-md border px-3 py-1 text-sm transition disabled:cursor-not-allowed disabled:opacity-60 ${
             myVote === -1
               ? "border-red-600 bg-red-50 text-red-700"
-              : "border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+              : "border-gray-300 hover:bg-gray-50"
           }`}
         >
           ▼ Down

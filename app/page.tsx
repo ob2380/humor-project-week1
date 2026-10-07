@@ -50,7 +50,7 @@ export default async function Home() {
         <h1 className="text-4xl font-bold">Captions</h1>
         <p className="mt-2 text-sm text-gray-500">
           {user
-            ? "Rate each caption — one vote per caption."
+            ? "Rate each caption — click your vote again to cancel it."
             : "Sign in to rate captions."}
         </p>
 
