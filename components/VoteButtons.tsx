@@ -80,8 +80,12 @@ export default function VoteButtons({
     } // a switch changes the score but not the vote count
 
     // 2) Save in the background; snap back only if the save fails.
+    const clickedAt = performance.now();
     submitVote(captionId, value)
       .then((result) => {
+        if (process.env.NODE_ENV !== "production") {
+          console.log(`[vote] saved ${Math.round(performance.now() - clickedAt)}ms after click`);
+        }
         if (result.error) throw new Error(result.error);
         if (current === null) castThisSession.current = true;
       })

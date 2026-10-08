@@ -26,7 +26,9 @@ export async function submitVote(
   captionId: number,
   value: number
 ): Promise<VoteResult> {
+  const t0 = performance.now();
   const user = await getCurrentUser();
+  const tAuth = performance.now();
   if (!user) {
     return { error: "You must be signed in to vote." };
   }
@@ -48,6 +50,13 @@ export async function submitVote(
     .eq("caption_id", captionId)
     .eq("profile_id", user.id)
     .maybeSingle();
+
+  const tRead = performance.now();
+  if (process.env.NODE_ENV !== "production") {
+    console.log(
+      `[vote] auth ${Math.round(tAuth - t0)}ms, read ${Math.round(tRead - tAuth)}ms (write follows)`
+    );
+  }
 
   if (readError) {
     return { error: "Couldn't save your vote. Please try again." };
