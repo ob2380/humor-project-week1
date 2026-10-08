@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // Routes that require a signed-in user. Checked here for UX (fast redirect
 // before any rendering), and re-checked inside each page/Server Action too —
 // Proxy is not a substitute for authorization at the data-access layer.
-const PROTECTED_PATHS = ["/dashboard", "/profile"];
+const PROTECTED_PATHS = ["/dashboard", "/profile", "/create"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
@@ -30,12 +30,11 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // IMPORTANT: avoid writing logic between createServerClient and getUser().
-  // Refreshing the session with a plain getSession() read can hide an
-  // expired/invalid token; getUser() re-validates it against Supabase Auth.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // IMPORTANT: avoid writing logic between createServerClient and getClaims().
+  // getClaims() refreshes an expired session and verifies the JWT signature
+  // locally, so it adds no extra network round trip on most requests.
+  const { data } = await supabase.auth.getClaims();
+  const user = data?.claims?.sub ? data.claims : null;
 
   const isProtected = PROTECTED_PATHS.some((path) =>
     request.nextUrl.pathname.startsWith(path)

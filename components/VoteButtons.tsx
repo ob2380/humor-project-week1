@@ -1,70 +1,125 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { submitVote } from "@/app/vote/actions";
+import { useGame } from "@/components/GameProvider";
+
+type Vote = 1 | -1 | null;
 
 type Props = {
   captionId: number;
   signedIn: boolean;
-  initialVote: 1 | -1 | null;
+  /** The signed-in user's saved vote on this caption, if any. */
+  initialVote: Vote;
+  /** True if that saved vote was cast in the last 24 hours. */
+  initialRecent: boolean;
+  /** Everyone else's net score (the total minus the user's own vote). */
+  otherScore: number;
 };
 
-export default function VoteButtons({ captionId, signedIn, initialVote }: Props) {
-  const [myVote, setMyVote] = useState<1 | -1 | null>(initialVote);
+function Score({ value }: { value: number }) {
+  return (
+    <div
+      className="flex items-center gap-2 font-display text-xl font-semibold"
+      aria-label={`Score ${value}`}
+    >
+      <span className="h-[22px] w-[22px] rounded-full border-[3px] border-ink bg-gold" />
+      <span>{value}</span>
+    </div>
+  );
+}
+
+export default function VoteButtons({
+  captionId,
+  signedIn,
+  initialVote,
+  initialRecent,
+  otherScore,
+}: Props) {
+  // The vote shown on screen. Changes the instant you click, then settles on
+  // whatever the server saved (or snaps back if the save fails).
+  const [myVote, setMyVote] = useState<Vote>(initialVote);
+  const [seenVote, setSeenVote] = useState<Vote>(initialVote);
+  const { applyDelta } = useGame();
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const castThisSession = useRef(false);
+  // Adopt fresh server data when the page re-renders (e.g. sign in/out).
+  if (initialVote !== seenVote) {
+    setSeenVote(initialVote);
+    setMyVote(initialVote);
+  }
 
   // Logged-out visitors can't rate captions.
   if (!signedIn) {
     return (
-      <Link href="/login?next=/" className="chunky-btn">
-        Sign in to vote
-      </Link>
+      <>
+        <Score value={otherScore} />
+        <Link href="/login?next=/" className="chunky-btn">
+          Sign in to vote
+        </Link>
+      </>
     );
   }
 
   // Clicking your current vote again cancels it; clicking the other arrow
-  // switches your vote. The server decides which, and tells us the result.
+  // switches your vote. The screen updates first; the server confirms after.
   function vote(value: 1 | -1) {
     setError(null);
-    startTransition(async () => {
-      const result = await submitVote(captionId, value);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      setMyVote(result.vote ?? null);
-    });
+    const current = myVote;
+    const next: Vote = current === value ? null : value;
+    const wasRecent = initialRecent || castThisSession.current;
+
+    // 1) Update the screen right now.
+    setMyVote(next);
+    let undo = () => {};
+    if (current === null) {
+      undo = applyDelta({ total: 1, recent: 1 });
+    } else if (next === null) {
+      undo = applyDelta({ total: -1, recent: wasRecent ? -1 : 0 });
+    } // a switch changes the score but not the vote count
+
+    // 2) Save in the background; snap back only if the save fails.
+    submitVote(captionId, value)
+      .then((result) => {
+        if (result.error) throw new Error(result.error);
+        if (current === null) castThisSession.current = true;
+      })
+      .catch((e: unknown) => {
+        setMyVote(current);
+        undo();
+        setError(e instanceof Error ? e.message : "Couldn't save your vote.");
+      });
   }
 
   return (
-    <div className="flex flex-col items-end gap-1">
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => vote(1)}
-          disabled={pending}
-          aria-label={myVote === 1 ? "Cancel upvote" : "Upvote"}
-          aria-pressed={myVote === 1}
-          title={myVote === 1 ? "Click again to cancel" : undefined}
-          className={`chunky-btn ${myVote === 1 ? "is-up is-pressed" : ""}`}
-        >
-          ▲ Up
-        </button>
-        <button
-          type="button"
-          onClick={() => vote(-1)}
-          disabled={pending}
-          aria-label={myVote === -1 ? "Cancel downvote" : "Downvote"}
-          aria-pressed={myVote === -1}
-          title={myVote === -1 ? "Click again to cancel" : undefined}
-          className={`chunky-btn ${myVote === -1 ? "is-down is-pressed" : ""}`}
-        >
-          ▼ Down
-        </button>
+    <>
+      <Score value={otherScore + (myVote ?? 0)} />
+      <div className="flex flex-col items-end gap-1">
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => vote(1)}
+            aria-label={myVote === 1 ? "Cancel upvote" : "Upvote"}
+            aria-pressed={myVote === 1}
+            title={myVote === 1 ? "Click again to cancel" : undefined}
+            className={`chunky-btn ${myVote === 1 ? "is-up is-pressed" : ""}`}
+          >
+            ▲ Up
+          </button>
+          <button
+            type="button"
+            onClick={() => vote(-1)}
+            aria-label={myVote === -1 ? "Cancel downvote" : "Downvote"}
+            aria-pressed={myVote === -1}
+            title={myVote === -1 ? "Click again to cancel" : undefined}
+            className={`chunky-btn ${myVote === -1 ? "is-down is-pressed" : ""}`}
+          >
+            ▼ Down
+          </button>
+        </div>
+        {error && <p className="text-xs font-bold text-[#B71C1C]">{error}</p>}
       </div>
-      {error && <p className="text-xs font-bold text-[#B71C1C]">{error}</p>}
-    </div>
+    </>
   );
 }

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Fredoka, Nunito } from "next/font/google";
 import NavBar from "@/components/NavBar";
+import { GameProvider } from "@/components/GameProvider";
+import { getPlayerStats } from "@/lib/game";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -16,19 +18,23 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "Punchline Quest",
-  description: "Rate captions, level up, and climb the weekly rankings.",
+  title: "The Humor Project",
+  description: "Rate captions, make memes, level up, and climb the weekly rankings.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  const stats = await getPlayerStats();
+
   return (
     <html
       lang="en"
       className={`${fredoka.variable} ${nunito.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <NavBar />
-        {children}
+        <GameProvider initial={stats}>
+          <NavBar />
+          {children}
+        </GameProvider>
       </body>
     </html>
   );

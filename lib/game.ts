@@ -3,41 +3,15 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 
-/**
- * Game layer. Everything here is DERIVED from real rows in `caption_votes` —
- * there are no separate XP/level tables to fake or tamper with:
- *   XP    = 5 per active vote (cancelling a vote removes its XP)
- *   Level = 1 + floor(XP / 100)
- *   Coins = 2 per active vote
- */
-export const XP_PER_VOTE = 5;
-export const COINS_PER_VOTE = 2;
-export const XP_PER_LEVEL = 100;
-export const DAILY_VOTE_GOAL = 3;
+import {
+  DAILY_VOTE_GOAL,
+  XP_PER_LEVEL,
+  statsFromVotes,
+  type PlayerStats,
+} from "@/lib/gameMath";
 
-export type PlayerStats = {
-  totalVotes: number;
-  votesLast24h: number;
-  xp: number;
-  level: number;
-  expIntoLevel: number;
-  expPercent: number;
-  coins: number;
-};
-
-export function statsFromVotes(total: number, last24h: number): PlayerStats {
-  const xp = total * XP_PER_VOTE;
-  const expIntoLevel = xp % XP_PER_LEVEL;
-  return {
-    totalVotes: total,
-    votesLast24h: last24h,
-    xp,
-    level: 1 + Math.floor(xp / XP_PER_LEVEL),
-    expIntoLevel,
-    expPercent: Math.round((expIntoLevel / XP_PER_LEVEL) * 100),
-    coins: total * COINS_PER_VOTE,
-  };
-}
+export { DAILY_VOTE_GOAL, XP_PER_LEVEL, statsFromVotes };
+export type { PlayerStats };
 
 /** Stats for the signed-in user, or null when signed out. */
 export const getPlayerStats = cache(async (): Promise<PlayerStats | null> => {
@@ -127,38 +101,97 @@ export async function getWeeklyRanks(meId: string | null): Promise<RankRow[]> {
 
 export type FeedTab = "trending" | "new" | "top";
 
+export type FeedRow = {
+  id: number;
+  image_description: string;
+  caption_text: string;
+  /** ms since epoch, so the client can sort without touching the clock. */
+  createdMs: number;
+  /** Net vote score (everyone's votes, including the user's own). */
+  score: number;
+  /** Net score of everyone except the signed-in user. */
+  otherScore: number;
+  /** Time-decayed "hot" score used by the Trending tab. */
+  hot: number;
+  isHot: boolean;
+  isNew: boolean;
+  myVote: 1 | -1 | null;
+  myRecent: boolean;
+};
+
 /**
- * Orders captions for a tab and works out which ones get a HOT / NEW tag.
- * Lives here (not in the page component) because it reads the clock.
+ * Turns captions + votes into plain rows the client can sort for any tab
+ * instantly. All clock reads happen here (on the server), once per request.
  */
-export function organizeCaptions<T extends { id: number; created_at: string }>(
+export function buildFeedRows<
+  T extends {
+    id: number;
+    image_description: string;
+    caption_text: string;
+    created_at: string;
+  },
+>(
   captions: T[],
   scores: Map<number, number>,
-  tab: FeedTab
-) {
+  myVotes: Map<number, 1 | -1>,
+  myRecent: Set<number>
+): FeedRow[] {
   const now = Date.now();
-  const net = (c: T) => scores.get(c.id) ?? 0;
-  const byNewest = (a: T, b: T) => b.created_at.localeCompare(a.created_at);
+  const rows = captions.map((c) => {
+    const score = scores.get(c.id) ?? 0;
+    const mine = myVotes.get(c.id) ?? null;
+    return {
+      id: c.id,
+      image_description: c.image_description,
+      caption_text: c.caption_text,
+      createdMs: new Date(c.created_at).getTime(),
+      score,
+      otherScore: score - (mine ?? 0),
+      hot: hotScore(score, c.created_at, now),
+      isHot: false,
+      isNew: now - new Date(c.created_at).getTime() < 24 * 3_600_000,
+      myVote: mine,
+      myRecent: myRecent.has(c.id),
+    };
+  });
 
-  const trending = [...captions].sort(
-    (a, b) =>
-      hotScore(net(b), b.created_at, now) - hotScore(net(a), a.created_at, now) ||
-      byNewest(a, b)
+  const hotIds = new Set(
+    [...rows]
+      .sort((a, b) => b.hot - a.hot || b.createdMs - a.createdMs)
+      .slice(0, 2)
+      .filter((r) => r.score > 0)
+      .map((r) => r.id)
   );
+  return rows.map((r) => ({ ...r, isHot: hotIds.has(r.id) }));
+}
 
-  const ordered =
-    tab === "trending"
-      ? trending
-      : tab === "new"
-        ? [...captions].sort(byNewest)
-        : [...captions].sort((a, b) => net(b) - net(a) || byNewest(a, b));
+type VoteRow = {
+  caption_id: number;
+  profile_id: string;
+  vote_value: number;
+  created_at: string;
+};
 
-  const hotIds = new Set(trending.slice(0, 2).filter((c) => net(c) > 0).map((c) => c.id));
-  const newIds = new Set(
-    captions
-      .filter((c) => now - new Date(c.created_at).getTime() < 24 * 3_600_000)
-      .map((c) => c.id)
-  );
+/**
+ * Folds raw vote rows into per-caption scores and the current user's own
+ * votes. Reads the clock (for the "voted in the last 24h" flag), so it lives
+ * here rather than in a component.
+ */
+export function summarizeVotes(votes: VoteRow[], userId: string | null) {
+  const now = Date.now();
+  const scores = new Map<number, number>();
+  const myVotes = new Map<number, 1 | -1>();
+  const myRecent = new Set<number>();
 
-  return { ordered, hotIds, newIds };
+  for (const v of votes) {
+    scores.set(v.caption_id, (scores.get(v.caption_id) ?? 0) + v.vote_value);
+    if (userId && v.profile_id === userId) {
+      myVotes.set(v.caption_id, v.vote_value === 1 ? 1 : -1);
+      if (now - new Date(v.created_at).getTime() < 24 * 3_600_000) {
+        myRecent.add(v.caption_id);
+      }
+    }
+  }
+
+  return { scores, myVotes, myRecent };
 }

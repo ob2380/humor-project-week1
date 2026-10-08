@@ -15,12 +15,17 @@ export type Profile = {
  * and Server Action calls this itself rather than trusting Proxy alone —
  * render-time gating is not a security boundary on its own.
  */
-export const getCurrentUser = cache(async () => {
+export type SessionUser = { id: string; email: string | null };
+
+export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
+  // getClaims() verifies the session JWT's signature locally (no network
+  // round trip to Supabase Auth when the project uses asymmetric signing
+  // keys), so it is much faster than getUser() but just as trustworthy.
+  const { data } = await supabase.auth.getClaims();
+  const claims = data?.claims;
+  if (!claims?.sub) return null;
+  return { id: claims.sub, email: (claims.email as string | undefined) ?? null };
 });
 
 export const getCurrentProfile = cache(async (): Promise<Profile | null> => {

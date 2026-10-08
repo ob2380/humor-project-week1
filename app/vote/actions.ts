@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
 
@@ -70,7 +69,6 @@ export async function submitVote(
       return { error: "Couldn't save your vote. Please try again." };
     }
 
-    revalidatePath("/", "layout");
     return { success: true, vote: newValue };
   }
 
@@ -86,7 +84,6 @@ export async function submitVote(
       return { error: "Couldn't cancel your vote. Please try again." };
     }
 
-    revalidatePath("/", "layout");
     return { success: true, vote: null };
   }
 
@@ -101,6 +98,5 @@ export async function submitVote(
     return { error: "Couldn't change your vote. Please try again." };
   }
 
-  revalidatePath("/", "layout");
   return { success: true, vote: newValue };
 }
