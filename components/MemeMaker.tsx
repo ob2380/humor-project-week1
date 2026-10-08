@@ -19,6 +19,7 @@ const TONE_LIST = (Object.keys(TONES) as Tone[]).map((id) => ({ id, label: TONES
 
 type Stage = "look" | "write" | "judge" | null;
 type Mode = "photo" | "idea";
+type Approach = "ai" | "manual";
 const STAGES: { id: Exclude<Stage, null>; label: string }[] = [
   { id: "look", label: "Sparky is looking at your photo..." },
   { id: "write", label: "Sparky is writing jokes..." },
@@ -30,6 +31,7 @@ const IDEA_MIN = 3;
 const IDEA_MAX = 240;
 const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
 const IDEA_SIZE = 1080;
+const DEFAULT_EMOJI = "😎";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_EDGE = 1280; // longest side after shrinking, keeps uploads small
@@ -169,6 +171,7 @@ function drawIdeaMeme(
 }
 
 export default function MemeMaker({ configured }: { configured: boolean }) {
+  const [approach, setApproach] = useState<Approach>("ai");
   const [mode, setMode] = useState<Mode>("photo");
   const [idea, setIdea] = useState("");
   const [emoji, setEmoji] = useState("");
@@ -187,8 +190,16 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const ideaReady = idea.trim().length >= IDEA_MIN;
-  const hasSource = mode === "photo" ? Boolean(img) : ideaReady;
-  const showEditor = mode === "photo" ? Boolean(img) : Boolean(captions) || top !== "" || bottom !== "";
+  const isAi = approach === "ai";
+  const hasSource = isAi && (mode === "photo" ? Boolean(img) : ideaReady);
+  // AI mode: edit after captions arrive. Manual mode: edit as soon as there is a backdrop.
+  const showEditor = isAi
+    ? mode === "photo"
+      ? Boolean(img)
+      : Boolean(captions)
+    : mode === "photo"
+      ? Boolean(img)
+      : true;
   const stages = mode === "photo" ? STAGES : STAGES.filter((st) => st.id !== "look");
 
   // Redraw the meme whenever the picture, theme, or text changes.
@@ -209,7 +220,17 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
     setCaptions(null);
     setTop("");
     setBottom("");
-    setEmoji("");
+    setEmoji(next === "idea" && !isAi ? DEFAULT_EMOJI : "");
+  }
+
+  function switchApproach(next: Approach) {
+    if (next === approach || pending) return;
+    setApproach(next);
+    setError(null);
+    setCaptions(null);
+    setTop("");
+    setBottom("");
+    setEmoji(next === "manual" && mode === "idea" ? DEFAULT_EMOJI : "");
   }
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -313,39 +334,71 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
     }, "image/png");
   }
 
+  const sourceLabels: Record<Mode, string> = isAi
+    ? { photo: "I have a photo", idea: "I have an idea" }
+    : { photo: "Use my photo", idea: "Emoji & colors" };
+
   return (
     <div className="mt-6 flex flex-col gap-6">
-      {!configured && (
+      {/* Who does the work? */}
+      <section className="window">
+        <h2 className="window-title bg-orange">Who&apos;s making this meme?</h2>
+        <div role="radiogroup" aria-label="Meme mode" className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2">
+          <button
+            type="button"
+            role="radio"
+            aria-checked={isAi}
+            onClick={() => switchApproach("ai")}
+            className={`chunky-btn flex-col items-start text-left ${isAi ? "is-tab-active" : ""}`}
+            style={{ height: "auto", padding: "12px 14px", alignItems: "flex-start" }}
+          >
+            <span className="text-lg">🤖 AI Mode</span>
+            <span className="text-xs font-bold normal-case">
+              Gemini writes the captions for you. You pick one.
+            </span>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={!isAi}
+            onClick={() => switchApproach("manual")}
+            className={`chunky-btn flex-col items-start text-left ${!isAi ? "is-tab-active" : ""}`}
+            style={{ height: "auto", padding: "12px 14px", alignItems: "flex-start" }}
+          >
+            <span className="text-lg">✍️ I Feel Creative Enough</span>
+            <span className="text-xs font-bold normal-case">
+              No AI. You write every word yourself.
+            </span>
+          </button>
+        </div>
+      </section>
+
+      {isAi && !configured && (
         <p className="rounded-[10px] border-[3px] border-ink bg-[#FFE08A] p-3 text-sm font-bold">
-          Caption generation isn&apos;t set up yet: the server is missing
-          its <code>GEMINI_API_KEY</code>. You can still upload a photo and
-          write your own caption below.
+          AI Mode isn&apos;t set up yet: the server is missing its <code>GEMINI_API_KEY</code>.
+          Try &quot;I Feel Creative Enough&quot; instead.
         </p>
       )}
 
-      {/* Step 1: photo or idea */}
+      {/* Step 1: backdrop / source */}
       <section className="window">
-        <h2 className="window-title bg-orange">1. Start with a photo or an idea</h2>
+        <h2 className="window-title bg-[#7CC6F0]">
+          {isAi ? "1. Give Gemini something to work with" : "1. Choose your picture"}
+        </h2>
         <div className="flex flex-col gap-4 p-4">
           <div role="radiogroup" aria-label="Meme source" className="flex flex-wrap gap-2.5">
-            <button
-              type="button"
-              role="radio"
-              aria-checked={mode === "photo"}
-              onClick={() => switchMode("photo")}
-              className={`chunky-btn ${mode === "photo" ? "is-tab-active" : ""}`}
-            >
-              I have a photo
-            </button>
-            <button
-              type="button"
-              role="radio"
-              aria-checked={mode === "idea"}
-              onClick={() => switchMode("idea")}
-              className={`chunky-btn ${mode === "idea" ? "is-tab-active" : ""}`}
-            >
-              I have an idea
-            </button>
+            {(["photo", "idea"] as Mode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                role="radio"
+                aria-checked={mode === m}
+                onClick={() => switchMode(m)}
+                className={`chunky-btn ${mode === m ? "is-tab-active" : ""}`}
+              >
+                {sourceLabels[m]}
+              </button>
+            ))}
           </div>
 
           {mode === "photo" ? (
@@ -363,7 +416,7 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
                 JPG, PNG, or WEBP. Photos are shrunk in your browser before upload.
               </p>
             </>
-          ) : (
+          ) : isAi ? (
             <>
               <label className="flex flex-col gap-1 text-sm font-extrabold">
                 Describe the situation or joke
@@ -377,18 +430,22 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
                 />
               </label>
               <p className="text-xs font-bold text-ink/75">
-                No photo needed. Sparky writes the jokes and picks an emoji and colors for the
-                picture. {idea.trim().length}/{IDEA_MAX}
+                No photo needed. Gemini writes the jokes and picks an emoji and colors.{" "}
+                {idea.trim().length}/{IDEA_MAX}
               </p>
             </>
+          ) : (
+            <p className="text-xs font-bold text-ink/75">
+              No photo? Pick your own emoji and background colors below.
+            </p>
           )}
         </div>
       </section>
 
-      {/* Step 2: style + generate */}
-      {hasSource && (
+      {/* Step 2 (AI only): style + generate */}
+      {isAi && hasSource && (
         <section className="window">
-          <h2 className="window-title bg-[#7CC6F0]">2. Pick a style</h2>
+          <h2 className="window-title bg-[#C9A7F5]">2. Pick a style, then let Gemini cook</h2>
           <div className="flex flex-col gap-4 p-4">
             <div role="radiogroup" aria-label="Caption style" className="flex flex-wrap gap-2.5">
               {TONE_LIST.map((t) => (
@@ -405,7 +462,7 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
               ))}
             </div>
             <label className="flex flex-col gap-1 text-sm font-extrabold">
-              Anything the captioner should know? (optional)
+              Anything Gemini should know? (optional)
               <input
                 type="text"
                 value={hint}
@@ -421,7 +478,7 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
               disabled={pending || !configured}
               className="chunky-btn self-start bg-gold"
             >
-              {pending ? "Working..." : captions ? "Generate again" : "Generate captions"}
+              {pending ? "Working..." : captions ? "🤖 Generate again" : "🤖 Generate captions"}
             </button>
             {pending && (
               <ol className="m-0 flex list-none flex-col gap-1.5 p-0" aria-live="polite">
@@ -454,14 +511,16 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
         </p>
       )}
 
-      {/* Step 3: choose, edit, download */}
+      {/* Final step: choose / write, style, download */}
       {showEditor && (
         <section className="window">
-          <h2 className="window-title bg-[#7ED6A4]">3. Your meme</h2>
+          <h2 className="window-title bg-[#7ED6A4]">
+            {isAi ? "3. Your meme (edit anything)" : "2. Write your meme"}
+          </h2>
           <div className="flex flex-col gap-4 p-4">
-            {captions && (
+            {isAi && captions && (
               <div className="flex flex-col gap-2">
-                <p className="text-sm font-extrabold">Pick a caption:</p>
+                <p className="text-sm font-extrabold">🤖 Gemini&apos;s picks. Tap one:</p>
                 {captions.map((c, i) => (
                   <button
                     key={i}
@@ -485,6 +544,7 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
                   value={top}
                   maxLength={80}
                   onChange={(e) => setTop(e.target.value)}
+                  placeholder={isAi ? undefined : "The setup..."}
                   className="rounded-[10px] border-[3px] border-ink bg-paper px-3 py-2 text-sm font-bold"
                 />
               </label>
@@ -495,6 +555,7 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
                   value={bottom}
                   maxLength={80}
                   onChange={(e) => setBottom(e.target.value)}
+                  placeholder={isAi ? undefined : "...the punchline"}
                   className="rounded-[10px] border-[3px] border-ink bg-paper px-3 py-2 text-sm font-bold"
                 />
               </label>

@@ -2,6 +2,7 @@ import "server-only";
 import { extractJson, parseCaptionList, parseDescription } from "./captionParse";
 import {
   LOOK_PROMPT,
+  FALLBACK_MODELS,
   LOOK_SYSTEM,
   MODELS,
   judgePrompt,
@@ -35,10 +36,16 @@ export function captionApiConfigured() {
   return Boolean(process.env.GEMINI_API_KEY);
 }
 
-function modelFor(step: StepId) {
+/** The step's model first, then the fallbacks (no duplicates). */
+function modelsFor(step: StepId): string[] {
   const override = process.env[`GEMINI_MODEL_${step.toUpperCase()}`];
-  return override && /^[\w.-]+$/.test(override) ? override : MODELS[step];
+  const first = override && /^[\w.-]+$/.test(override) ? override : MODELS[step];
+  return [first, ...FALLBACK_MODELS.filter((m) => m !== first)];
 }
+
+// Statuses where trying a different model can help: missing model, no quota
+// on this model's free tier, or the model is overloaded.
+const RETRY_WITH_NEXT_MODEL = new Set([404, 429, 503]);
 
 type Part = { text: string } | { inlineData: { mimeType: string; data: string } };
 
@@ -51,34 +58,46 @@ async function callGemini(opts: {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new CaptionApiError("not_configured", "GEMINI_API_KEY is not set");
 
-  let res: Response;
-  try {
-    res = await fetch(`${BASE}/${modelFor(opts.step)}:generateContent`, {
-      method: "POST",
-      headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: opts.system }] },
-        contents: [{ role: "user", parts: opts.parts }],
-        generationConfig: {
-          temperature: opts.temperature,
-          // Generous: newer models may spend part of this "thinking".
-          maxOutputTokens: 2048,
-          responseMimeType: "application/json",
-        },
-      }),
-      signal: AbortSignal.timeout(25_000),
-    });
-  } catch {
-    throw new CaptionApiError("failed", `${opts.step}: request failed or timed out`);
+  const body = JSON.stringify({
+    systemInstruction: { parts: [{ text: opts.system }] },
+    contents: [{ role: "user", parts: opts.parts }],
+    generationConfig: {
+      temperature: opts.temperature,
+      // Generous: newer models may spend part of this "thinking".
+      maxOutputTokens: 2048,
+      responseMimeType: "application/json",
+    },
+  });
+
+  let res: Response | null = null;
+  let lastStatus = 0;
+  for (const model of modelsFor(opts.step)) {
+    try {
+      res = await fetch(`${BASE}/${model}:generateContent`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+        body,
+        signal: AbortSignal.timeout(25_000),
+      });
+    } catch {
+      throw new CaptionApiError("failed", `${opts.step}: request failed or timed out`);
+    }
+    if (res.ok) break;
+    lastStatus = res.status;
+    // Status and model name only: never log the key, the prompt, or the image.
+    console.error(`[caption:${opts.step}] ${model} returned`, res.status);
+    if (!RETRY_WITH_NEXT_MODEL.has(res.status)) break;
+    res = null;
   }
 
-  if (!res.ok) {
-    // Status only: never log the key, the prompt, or the image.
-    console.error(`[caption:${opts.step}] Gemini returned`, res.status);
+  if (!res) {
     throw new CaptionApiError(
-      res.status === 429 || res.status === 503 ? "busy" : "failed",
-      `${opts.step}: Gemini returned ${res.status}`
+      lastStatus === 429 || lastStatus === 503 ? "busy" : "failed",
+      `${opts.step}: Gemini returned ${lastStatus}`
     );
+  }
+  if (!res.ok) {
+    throw new CaptionApiError("failed", `${opts.step}: Gemini returned ${res.status}`);
   }
 
   const data = (await res.json()) as {

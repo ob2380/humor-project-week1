@@ -9,12 +9,17 @@ import { TONES, type MemeCaption, type PhotoDescription, type Tone } from "./cap
  *   3. JUDGE  (fast model)         options -> the best three, polished
  */
 
-// Free-tier Gemini models. Override per step with the env vars on the right.
+// Free-tier Gemini models. "-latest" aliases always point at Google's current
+// Flash / Flash-Lite, so they keep working when versions change. If a model is
+// out of quota or missing, captionApi tries FALLBACK_MODELS in order.
+// Override per step with the env vars on the right.
 export const MODELS = {
-  look: "gemini-3.5-flash-lite", // GEMINI_MODEL_LOOK
-  write: "gemini-3.8-flash", // GEMINI_MODEL_WRITE
-  judge: "gemini-3.5-flash-lite", // GEMINI_MODEL_JUDGE
+  look: "gemini-flash-lite-latest", // GEMINI_MODEL_LOOK
+  write: "gemini-flash-latest", // GEMINI_MODEL_WRITE
+  judge: "gemini-flash-lite-latest", // GEMINI_MODEL_JUDGE
 } as const;
+
+export const FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
 
 export type StepId = keyof typeof MODELS;
 
