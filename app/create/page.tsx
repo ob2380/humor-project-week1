@@ -10,14 +10,14 @@ export default async function CreatePage() {
     redirect("/login?next=/create");
   }
 
-  const configured = Boolean(process.env.ANTHROPIC_API_KEY);
+  const configured = Boolean(process.env.GEMINI_API_KEY);
 
   return (
     <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-8 sm:px-12">
       <h1 className="font-display text-4xl font-bold">Make a meme</h1>
       <p className="mt-2 text-sm font-bold text-ink/75">
-        Upload a photo, pick a style, and get three caption ideas. Edit one,
-        then download your meme.
+        Upload a photo or just type an idea, pick a style, and get three caption
+        ideas. Edit one, then download your meme.
       </p>
       <MemeMaker configured={configured} />
     </main>

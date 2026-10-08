@@ -1,16 +1,35 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
-import { generateCaptionsAction } from "@/app/create/actions";
-import type { MemeCaption } from "@/lib/captionApi";
+import { useEffect, useRef, useState } from "react";
+import {
+  judgeCaptionsAction,
+  lookAtPhotoAction,
+  writeCaptionsAction,
+} from "@/app/create/actions";
+import {
+  THEMES,
+  TONES,
+  type MemeCaption,
+  type PhotoDescription,
+  type ThemeId,
+  type Tone,
+} from "@/lib/captionTypes";
 
-const TONES = [
-  { id: "classic", label: "Classic" },
-  { id: "dry", label: "Dry" },
-  { id: "absurd", label: "Absurd" },
-  { id: "campus", label: "Campus life" },
-  { id: "wholesome", label: "Wholesome" },
+const TONE_LIST = (Object.keys(TONES) as Tone[]).map((id) => ({ id, label: TONES[id].label }));
+
+type Stage = "look" | "write" | "judge" | null;
+type Mode = "photo" | "idea";
+const STAGES: { id: Exclude<Stage, null>; label: string }[] = [
+  { id: "look", label: "Sparky is looking at your photo..." },
+  { id: "write", label: "Sparky is writing jokes..." },
+  { id: "judge", label: "Sparky is picking the funniest..." },
 ];
+
+const THEME_LIST = (Object.keys(THEMES) as ThemeId[]).map((id) => ({ id, label: THEMES[id].label }));
+const IDEA_MIN = 3;
+const IDEA_MAX = 240;
+const EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+const IDEA_SIZE = 1080;
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_EDGE = 1280; // longest side after shrinking, keeps uploads small
@@ -119,23 +138,79 @@ function drawMeme(canvas: HTMLCanvasElement, img: HTMLImageElement, top: string,
   drawMemeText(ctx, bottom, canvas.width, canvas.height, "bottom");
 }
 
+/** Text-only meme: gradient background, one big emoji as the "picture". */
+function drawIdeaMeme(
+  canvas: HTMLCanvasElement,
+  theme: ThemeId,
+  emoji: string,
+  top: string,
+  bottom: string
+) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  canvas.width = IDEA_SIZE;
+  canvas.height = IDEA_SIZE;
+  const t = THEMES[theme];
+  const grad = ctx.createLinearGradient(0, 0, IDEA_SIZE, IDEA_SIZE);
+  grad.addColorStop(0, t.from);
+  grad.addColorStop(1, t.to);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, IDEA_SIZE, IDEA_SIZE);
+
+  if (emoji) {
+    ctx.font = `${Math.round(IDEA_SIZE * 0.36)}px ${EMOJI_FONT}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#000000";
+    ctx.fillText(emoji, IDEA_SIZE / 2, IDEA_SIZE / 2);
+  }
+  drawMemeText(ctx, top, IDEA_SIZE, IDEA_SIZE, "top");
+  drawMemeText(ctx, bottom, IDEA_SIZE, IDEA_SIZE, "bottom");
+}
+
 export default function MemeMaker({ configured }: { configured: boolean }) {
+  const [mode, setMode] = useState<Mode>("photo");
+  const [idea, setIdea] = useState("");
+  const [emoji, setEmoji] = useState("");
+  const [theme, setTheme] = useState<ThemeId>("sunny");
   const [img, setImg] = useState<HTMLImageElement | null>(null);
   const [photo, setPhoto] = useState<Blob | null>(null);
-  const [tone, setTone] = useState("classic");
+  const [tone, setTone] = useState<Tone>("classic");
   const [hint, setHint] = useState("");
   const [captions, setCaptions] = useState<MemeCaption[] | null>(null);
   const [selected, setSelected] = useState(0);
   const [top, setTop] = useState("");
   const [bottom, setBottom] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [stage, setStage] = useState<Stage>(null);
+  const pending = stage !== null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // Redraw the meme whenever the photo or text changes.
+  const ideaReady = idea.trim().length >= IDEA_MIN;
+  const hasSource = mode === "photo" ? Boolean(img) : ideaReady;
+  const showEditor = mode === "photo" ? Boolean(img) : Boolean(captions) || top !== "" || bottom !== "";
+  const stages = mode === "photo" ? STAGES : STAGES.filter((st) => st.id !== "look");
+
+  // Redraw the meme whenever the picture, theme, or text changes.
   useEffect(() => {
-    if (canvasRef.current && img) drawMeme(canvasRef.current, img, top, bottom);
-  }, [img, top, bottom, captions]);
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (mode === "photo") {
+      if (img) drawMeme(canvas, img, top, bottom);
+    } else {
+      drawIdeaMeme(canvas, theme, emoji, top, bottom);
+    }
+  }, [mode, img, theme, emoji, top, bottom, captions, showEditor]);
+
+  function switchMode(next: Mode) {
+    if (next === mode || pending) return;
+    setMode(next);
+    setError(null);
+    setCaptions(null);
+    setTop("");
+    setBottom("");
+    setEmoji("");
+  }
 
   async function onFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -162,26 +237,66 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
     setSelected(index);
     setTop(list[index].top);
     setBottom(list[index].bottom);
+    if (mode === "idea") {
+      setEmoji(list[index].emoji ?? "");
+      if (list[index].theme) setTheme(list[index].theme);
+    }
   }
 
-  function generate() {
-    if (!photo) return;
+  async function generate() {
+    if (pending) return;
+    if (mode === "photo" && !photo) return;
+    if (mode === "idea" && !ideaReady) return;
     setError(null);
 
-    const form = new FormData();
-    form.append("image", photo, "photo.jpg");
-    form.append("tone", tone);
-    form.append("hint", hint);
+    try {
+      // Step 1: look at the photo. An idea has nothing to look at, so the
+      // typed text stands in for what the "eyes" would have seen.
+      let described: PhotoDescription;
+      if (mode === "photo" && photo) {
+        setStage("look");
+        const form = new FormData();
+        form.append("image", photo, "photo.jpg");
+        const looked = await lookAtPhotoAction(form);
+        if (looked.error || !looked.photo) {
+          setError(looked.error ?? "Couldn't read the photo.");
+          return;
+        }
+        described = looked.photo;
+      } else {
+        described = {
+          kind: "idea",
+          description: idea.trim().slice(0, IDEA_MAX),
+          subjects: [],
+          mood: "",
+          setting: "",
+          visibleText: "",
+          memeAngle: "",
+          safe: true,
+        };
+      }
 
-    startTransition(async () => {
-      const result = await generateCaptionsAction(form);
-      if (result.error || !result.captions) {
-        setError(result.error ?? "Couldn't generate captions.");
+      // Step 2: write candidate captions.
+      setStage("write");
+      const written = await writeCaptionsAction(described, tone, hint);
+      if (written.error || !written.candidates) {
+        setError(written.error ?? "Couldn't write captions.");
         return;
       }
-      setCaptions(result.captions);
-      pick(result.captions, 0);
-    });
+
+      // Step 3: pick the best. If this step fails, fall back to the first
+      // three candidates rather than throwing the work away.
+      setStage("judge");
+      const judged = await judgeCaptionsAction(described, written.candidates);
+      const final = judged.captions?.length ? judged.captions : written.candidates.slice(0, 3);
+
+      setCaptions(final);
+      pick(final, 0);
+    } catch {
+      setError("Couldn't generate captions. Please try again.");
+    } finally {
+      setStage(null);
+    }
   }
 
   function download() {
@@ -203,37 +318,80 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
       {!configured && (
         <p className="rounded-[10px] border-[3px] border-ink bg-[#FFE08A] p-3 text-sm font-bold">
           Caption generation isn&apos;t set up yet: the server is missing
-          its <code>ANTHROPIC_API_KEY</code>. You can still upload a photo and
+          its <code>GEMINI_API_KEY</code>. You can still upload a photo and
           write your own caption below.
         </p>
       )}
 
-      {/* Step 1: photo */}
+      {/* Step 1: photo or idea */}
       <section className="window">
-        <h2 className="window-title bg-orange">1. Pick a photo</h2>
+        <h2 className="window-title bg-orange">1. Start with a photo or an idea</h2>
         <div className="flex flex-col gap-4 p-4">
-          <label className="chunky-btn self-start cursor-pointer">
-            {img ? "Choose a different photo" : "Choose a photo"}
-            <input
-              type="file"
-              accept="image/jpeg,image/png,image/webp"
-              onChange={onFileChange}
-              className="sr-only"
-            />
-          </label>
-          <p className="text-xs font-bold text-ink/75">
-            JPG, PNG, or WEBP. Photos are shrunk in your browser before upload.
-          </p>
+          <div role="radiogroup" aria-label="Meme source" className="flex flex-wrap gap-2.5">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === "photo"}
+              onClick={() => switchMode("photo")}
+              className={`chunky-btn ${mode === "photo" ? "is-tab-active" : ""}`}
+            >
+              I have a photo
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === "idea"}
+              onClick={() => switchMode("idea")}
+              className={`chunky-btn ${mode === "idea" ? "is-tab-active" : ""}`}
+            >
+              I have an idea
+            </button>
+          </div>
+
+          {mode === "photo" ? (
+            <>
+              <label className="chunky-btn self-start cursor-pointer">
+                {img ? "Choose a different photo" : "Choose a photo"}
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  onChange={onFileChange}
+                  className="sr-only"
+                />
+              </label>
+              <p className="text-xs font-bold text-ink/75">
+                JPG, PNG, or WEBP. Photos are shrunk in your browser before upload.
+              </p>
+            </>
+          ) : (
+            <>
+              <label className="flex flex-col gap-1 text-sm font-extrabold">
+                Describe the situation or joke
+                <textarea
+                  value={idea}
+                  maxLength={IDEA_MAX}
+                  rows={3}
+                  onChange={(e) => setIdea(e.target.value)}
+                  placeholder="e.g. opening the group project doc the night before it's due"
+                  className="rounded-[10px] border-[3px] border-ink bg-paper px-3 py-2 text-sm font-bold"
+                />
+              </label>
+              <p className="text-xs font-bold text-ink/75">
+                No photo needed. Sparky writes the jokes and picks an emoji and colors for the
+                picture. {idea.trim().length}/{IDEA_MAX}
+              </p>
+            </>
+          )}
         </div>
       </section>
 
       {/* Step 2: style + generate */}
-      {img && (
+      {hasSource && (
         <section className="window">
           <h2 className="window-title bg-[#7CC6F0]">2. Pick a style</h2>
           <div className="flex flex-col gap-4 p-4">
             <div role="radiogroup" aria-label="Caption style" className="flex flex-wrap gap-2.5">
-              {TONES.map((t) => (
+              {TONE_LIST.map((t) => (
                 <button
                   key={t.id}
                   type="button"
@@ -263,8 +421,29 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
               disabled={pending || !configured}
               className="chunky-btn self-start bg-gold"
             >
-              {pending ? "Sparky is thinking..." : captions ? "Generate again" : "Generate captions"}
+              {pending ? "Working..." : captions ? "Generate again" : "Generate captions"}
             </button>
+            {pending && (
+              <ol className="m-0 flex list-none flex-col gap-1.5 p-0" aria-live="polite">
+                {stages.map((st, i) => {
+                  const current = stages.findIndex((x) => x.id === stage);
+                  const state = i < current ? "done" : i === current ? "active" : "todo";
+                  return (
+                    <li
+                      key={st.id}
+                      className={`text-sm font-bold ${state === "todo" ? "text-ink/40" : ""}`}
+                    >
+                      {state === "done" ? "✓ " : state === "active" ? "▸ " : "○ "}
+                      {st.label}
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
+            <p className="text-xs font-bold text-ink/60">
+              Captions are made with Google Gemini. Photos and text you send may be used by Google
+              to improve its products, so avoid private photos of other people.
+            </p>
           </div>
         </section>
       )}
@@ -276,7 +455,7 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
       )}
 
       {/* Step 3: choose, edit, download */}
-      {img && (
+      {showEditor && (
         <section className="window">
           <h2 className="window-title bg-[#7ED6A4]">3. Your meme</h2>
           <div className="flex flex-col gap-4 p-4">
@@ -320,6 +499,35 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
                 />
               </label>
             </div>
+
+            {mode === "idea" && (
+              <div className="flex flex-col gap-3">
+                <label className="flex flex-col gap-1 text-sm font-extrabold">
+                  Picture emoji
+                  <input
+                    type="text"
+                    value={emoji}
+                    maxLength={8}
+                    onChange={(e) => setEmoji(e.target.value)}
+                    className="w-28 rounded-[10px] border-[3px] border-ink bg-paper px-3 py-2 text-center text-xl"
+                  />
+                </label>
+                <div role="radiogroup" aria-label="Background colors" className="flex flex-wrap gap-2.5">
+                  {THEME_LIST.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={theme === t.id}
+                      onClick={() => setTheme(t.id)}
+                      className={`chunky-btn ${theme === t.id ? "is-tab-active" : ""}`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <canvas
               ref={canvasRef}
