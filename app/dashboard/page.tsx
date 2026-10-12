@@ -14,43 +14,47 @@ export default async function DashboardPage() {
   const complete = isProfileComplete(profile);
 
   return (
-    <main className="min-h-screen px-6 py-16 sm:px-12">
-      <div className="mx-auto max-w-2xl">
-        <h1 className="text-3xl font-bold">
-          Welcome{profile?.first_name ? `, ${profile.first_name}` : ""}
-        </h1>
-        <p className="mt-2 text-sm text-ink/75">
-          This page is only visible to signed-in users.
-        </p>
+    <main className="mx-auto w-full max-w-3xl flex-1 px-6 py-8 sm:px-12">
+      <h1 className="font-display text-4xl font-bold">
+        Welcome{profile?.first_name ? `, ${profile.first_name}` : ""}!
+      </h1>
+      <p className="mt-2 text-sm font-bold text-ink/75">
+        This page is only visible to signed-in players.
+      </p>
 
-        {!complete && (
-          <div className="mt-8 rounded-xl border border-amber-200 bg-amber-50 p-5">
-            <p className="text-sm font-medium text-amber-900">
-              Finish setting up your profile
-            </p>
-            <p className="mt-1 text-sm text-amber-800">
+      {!complete && (
+        <section className="window mt-6">
+          <h2 className="window-title bg-gold">Finish setting up your profile</h2>
+          <div className="flex flex-col items-start gap-3 p-4">
+            <p className="text-sm font-bold">
               Add your first and last name so we know who you are.
             </p>
-            <Link
-              href="/profile"
-              className="mt-3 inline-block rounded-md bg-amber-900 px-4 py-2 text-sm font-medium text-white"
-            >
+            <Link href="/profile" className="chunky-btn bg-gold">
               Complete profile
             </Link>
           </div>
-        )}
+        </section>
+      )}
 
-        {complete && (
-          <div className="mt-8 rounded-xl border border-ink p-5">
-            <p className="text-sm text-ink/75">
-              Signed in as {profile?.first_name} {profile?.last_name} ({user.email})
-            </p>
-            <Link href="/profile" className="mt-2 inline-block text-sm underline">
+      {complete && (
+        <section className="window mt-6">
+          <h2 className="window-title bg-[#7ED6A4]">You&apos;re all set</h2>
+          <p className="p-4 pb-2 text-sm font-bold text-ink/75">
+            Signed in as {profile?.first_name} {profile?.last_name} ({user.email})
+          </p>
+          <div className="flex flex-wrap gap-2.5 p-4 pt-2">
+            <Link href="/" className="chunky-btn bg-gold">
+              Vote on captions
+            </Link>
+            <Link href="/create" className="chunky-btn">
+              Make a meme
+            </Link>
+            <Link href="/profile" className="chunky-btn">
               Edit profile
             </Link>
           </div>
-        )}
-      </div>
+        </section>
+      )}
     </main>
   );
 }

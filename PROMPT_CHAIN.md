@@ -121,3 +121,36 @@ AI tool used: Claude (Sonnet 5), via Cowork with a live link to my Mac (device b
 - Added `app/dashboard/` as a protected route showing a profile-completion prompt when name fields are empty.
 - Fixed two real-world bugs found only after deploying: a stale local Turbopack cache masking a native-binary platform mismatch (`lightningcss-darwin-arm64`), and Next's default 1MB Server Action body cap rejecting profile-photo uploads.
 - Verified end-to-end on both localhost and the live Vercel production deployment: Google sign-in → `/dashboard` → `/profile` → name + avatar save, all confirmed via the Table Editor and a live browser click-through.
+
+---
+
+# Prompt Chain — Week 5: Get Feedback and Iterate
+
+AI tool used: Claude (Sonnet 5), via Cowork with a live link to my Mac (device bridge) and the built-in browser pane for live testing. The meme feature itself uses Google Gemini (free tier).
+
+## Prompts, in order
+
+1. **"ok how do I know where we sit at this project? ... also the UI/UX is responding super slow. we need to fix that"**
+   → Claude checked git/tsc/eslint status and started measuring the slowness.
+2. **"switching between trending and new jokes takes forever as well as voting."** / **"non of what you said actually worked. fix the speed!"**
+   → Votes and tab switching became instant: optimistic client state with rollback on failure, no page revalidation after a vote, client-side tab switching, and `auth.getClaims()` instead of a network `getUser()` call.
+3. **"can we just open it in the cowork session here and you can test it yourself?"** / **"try to test shifting between trending, new, etc. and voting... then test the whole website"**
+   → Claude measured the live site in the browser pane (tabs 1-5 ms, vote UI 2 ms, save ~300 ms). I had been testing an old immutable deployment URL; the fix was to use the production domain.
+4. **"Lets work on the API now. should we connect it to claude? My instructor mentioned that we can give different models work on different parts of the meme origination"** → **"no, I need a free option. I know everyone is using Gemini"**
+   → Chose a 3-step Gemini chain (look at the photo, write captions, judge and pick the best three) on the free tier. Prompts live in `lib/captionPrompts.ts`; the API key is a server-only env var.
+5. **"start building. will deal w assignment 5 later"** / **"I have the API key. will that line of code show up in my VS studio?"**
+   → Claude built the server actions and meme maker; I created the key myself and added it to `.env.local` and Vercel.
+6. **"I need an option of uploading a picture or text and Gemini will help with the rest."**
+   → Added "idea mode": type a situation and Gemini writes captions and picks an emoji and color theme (the free tier can't generate images).
+7. **(screenshot of "The caption service is busy") "...Also, the UI is not clear. I can't tell when AI is doing everything and when I am doing the work myself. Let's separate AI Mode and 'I Feel Creative Enough'"**
+   → Added automatic model fallback on quota/overload errors (the cause of the busy error) and split the page into AI Mode (Gemini writes) and "I Feel Creative Enough" (fully manual). Confirmed working live.
+8. **(Week 5 assignment screenshots) "make sure you cover everything on assignment 5"**
+   → Audited the rubric: confirmed public access and that deployment protection is off, restyled login, dashboard and profile to match the rest of the app, and reviewed the code paths for route protection and voting (logged-in vs logged-out).
+
+## What Claude did (implementation summary)
+
+- Performance: optimistic voting and tab switching, `getClaims()`, removed post-vote revalidation.
+- Meme maker (`/create`, auth-protected): `lib/captionApi.ts` (only file that talks to Gemini), `lib/captionPrompts.ts`, `lib/captionParse.ts`, `app/create/actions.ts` (each action re-authenticates and rate-limits), `components/MemeMaker.tsx` (canvas rendering, download as PNG).
+- Safety: the photo and any text in it are treated as untrusted; magic-byte checks on uploads; 4 MB cap; the API key is never sent to the browser or logged.
+- UI consistency: login, dashboard and profile now use the same game-style components as the feed.
+- No RLS policies or storage settings were changed.

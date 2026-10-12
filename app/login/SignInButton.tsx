@@ -29,15 +29,19 @@ export default function SignInButton({ next }: { next?: string }) {
   }
 
   return (
-    <div>
+    <div className="flex flex-col gap-3">
       <button
         onClick={signInWithGoogle}
         disabled={loading}
-        className="mt-6 w-full rounded-md bg-black px-4 py-2 text-sm font-medium text-white transition hover:bg-gray-800 disabled:opacity-50"
+        className="chunky-btn w-full justify-center bg-gold"
       >
         {loading ? "Redirecting…" : "Continue with Google"}
       </button>
-      {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="rounded-[10px] border-[3px] border-ink bg-[#FFD6D6] p-3 text-sm font-bold">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
