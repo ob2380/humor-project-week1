@@ -2,7 +2,6 @@ import Link from "next/link";
 import { getCurrentUser } from "@/lib/auth";
 import { signOut } from "@/app/auth/actions";
 import Mascot from "@/components/Mascot";
-import Hud from "@/components/Hud";
 
 /** Game-style top bar: logo, level/EXP/coins HUD, and navigation. */
 export default async function NavBar() {
@@ -16,8 +15,6 @@ export default async function NavBar() {
           The Humor Project
         </span>
       </Link>
-
-      {user && <Hud />}
 
       <nav className="flex items-center gap-4 text-sm font-bold">
         {user ? (

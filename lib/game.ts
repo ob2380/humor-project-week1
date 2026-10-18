@@ -99,7 +99,7 @@ export async function getWeeklyRanks(meId: string | null): Promise<RankRow[]> {
   }));
 }
 
-export type FeedTab = "trending" | "new" | "top";
+export type FeedTab = "trending" | "new" | "top" | "community";
 
 export type FeedRow = {
   id: number;
@@ -117,6 +117,10 @@ export type FeedRow = {
   isNew: boolean;
   myVote: 1 | -1 | null;
   myRecent: boolean;
+  /** Public image URL for community memes. */
+  imageUrl: string | null;
+  /** True for approved community posts. */
+  community: boolean;
 };
 
 /**
@@ -134,7 +138,8 @@ export function buildFeedRows<
   captions: T[],
   scores: Map<number, number>,
   myVotes: Map<number, 1 | -1>,
-  myRecent: Set<number>
+  myRecent: Set<number>,
+  community: Map<number, string | null> = new Map()
 ): FeedRow[] {
   const now = Date.now();
   const rows = captions.map((c) => {
@@ -152,6 +157,8 @@ export function buildFeedRows<
       isNew: now - new Date(c.created_at).getTime() < 24 * 3_600_000,
       myVote: mine,
       myRecent: myRecent.has(c.id),
+      imageUrl: community.get(c.id) ?? null,
+      community: community.has(c.id),
     };
   });
 

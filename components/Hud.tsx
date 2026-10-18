@@ -4,12 +4,12 @@ import { useGame } from "@/components/GameProvider";
 import { XP_PER_LEVEL } from "@/lib/gameMath";
 
 /** Level badge, EXP bar and coin counter. Updates instantly as you vote. */
-export default function Hud() {
+export default function Hud({ className = "min-w-[260px] max-w-md flex-1" }: { className?: string }) {
   const { stats } = useGame();
   if (!stats) return null;
 
   return (
-    <div className="flex min-w-[260px] max-w-md flex-1 items-center gap-3">
+    <div className={`flex items-center gap-3 ${className}`}>
       <div
         className="flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-full border-[3px] border-ink bg-gold font-display leading-none shadow-[0_3px_0_var(--ink)]"
         aria-label={`Level ${stats.level}`}

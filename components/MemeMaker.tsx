@@ -1,6 +1,8 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { submitPost } from "@/app/community/actions";
 import {
   judgeCaptionsAction,
   lookAtPhotoAction,
@@ -170,7 +172,13 @@ function drawIdeaMeme(
   drawMemeText(ctx, bottom, IDEA_SIZE, IDEA_SIZE, "bottom");
 }
 
-export default function MemeMaker({ configured }: { configured: boolean }) {
+export default function MemeMaker({
+  configured,
+  signedIn = true,
+}: {
+  configured: boolean;
+  signedIn?: boolean;
+}) {
   const [approach, setApproach] = useState<Approach>("ai");
   const [mode, setMode] = useState<Mode>("photo");
   const [idea, setIdea] = useState("");
@@ -186,6 +194,10 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
   const [bottom, setBottom] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [fileKey, setFileKey] = useState(0);
+  const [posting, setPosting] = useState(false);
+  const [postMsg, setPostMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const pending = stage !== null;
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -320,6 +332,60 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
     }
   }
 
+  /** Throws the current meme away and starts fresh. Nothing is stored on the server. */
+  function deleteMeme() {
+    setImg(null);
+    setPhoto(null);
+    setCaptions(null);
+    setSelected(0);
+    setTop("");
+    setBottom("");
+    setIdea("");
+    setHint("");
+    setError(null);
+    setEmoji(mode === "idea" && !isAi ? DEFAULT_EMOJI : "");
+    setFileKey((k) => k + 1); // resets the file picker so the same photo can be chosen again
+    setConfirmDelete(false);
+    setPostMsg(null);
+  }
+
+  /** Sends the meme (or just its caption) to the admin review queue. */
+  async function post(withImage: boolean) {
+    const canvas = canvasRef.current;
+    if (!canvas || posting) return;
+    const text = [top, bottom].map((t) => t.trim()).filter(Boolean).join(" / ");
+    if (!text) {
+      setPostMsg({ ok: false, text: "Write some text first." });
+      return;
+    }
+    setPosting(true);
+    setPostMsg(null);
+    try {
+      const form = new FormData();
+      form.append("text", text);
+      if (withImage) {
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, "image/jpeg", 0.9)
+        );
+        if (!blob) throw new Error("encode failed");
+        form.append("image", blob, "meme.jpg");
+      }
+      const res = await submitPost(form);
+      setPostMsg(
+        res.ok
+          ? {
+              ok: true,
+              text: "Sent! It will show up on the meme page once an admin approves it.",
+            }
+          : { ok: false, text: res.error ?? "Couldn't post." }
+      );
+    } catch {
+      setPostMsg({ ok: false, text: "Couldn't post. Please try again." });
+    } finally {
+      setPosting(false);
+    }
+  }
+
   function download() {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -406,6 +472,7 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
               <label className="chunky-btn self-start cursor-pointer">
                 {img ? "Choose a different photo" : "Choose a photo"}
                 <input
+                  key={fileKey}
                   type="file"
                   accept="image/jpeg,image/png,image/webp"
                   onChange={onFileChange}
@@ -596,9 +663,66 @@ export default function MemeMaker({ configured }: { configured: boolean }) {
               className="w-full rounded-[10px] border-[3px] border-ink bg-white"
             />
 
-            <button type="button" onClick={download} className="chunky-btn self-start bg-gold">
-              Download PNG
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <button type="button" onClick={download} className="chunky-btn bg-gold">
+                Download PNG
+              </button>
+              {confirmDelete ? (
+                <>
+                  <span className="text-sm font-extrabold">Delete this meme?</span>
+                  <button type="button" onClick={deleteMeme} className="chunky-btn is-down">
+                    Yes, delete
+                  </button>
+                  <button type="button" onClick={() => setConfirmDelete(false)} className="chunky-btn">
+                    Keep it
+                  </button>
+                </>
+              ) : (
+                <button type="button" onClick={() => setConfirmDelete(true)} className="chunky-btn">
+                  Delete meme
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              {signedIn ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => post(true)}
+                    disabled={posting}
+                    className="chunky-btn bg-[#7ED6A4]"
+                  >
+                    {posting ? "Sending..." : "Post to meme page"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => post(false)}
+                    disabled={posting}
+                    className="chunky-btn"
+                  >
+                    Post caption only
+                  </button>
+                </>
+              ) : (
+                <Link href="/login?next=/create" className="chunky-btn">
+                  Sign in to post
+                </Link>
+              )}
+            </div>
+            {postMsg && (
+              <p
+                role="status"
+                className={`rounded-[10px] border-[3px] border-ink p-3 text-sm font-bold ${
+                  postMsg.ok ? "bg-[#CDEBC0]" : "bg-[#FFD6D6]"
+                }`}
+              >
+                {postMsg.text}
+              </p>
+            )}
+            <p className="text-xs font-bold text-ink/60">
+              Posts are reviewed by an admin before anyone sees them. Download keeps a copy on
+              your device; Delete clears the meme from this page.
+            </p>
           </div>
         </section>
       )}

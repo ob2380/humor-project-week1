@@ -147,6 +147,12 @@ AI tool used: Claude (Sonnet 5), via Cowork with a live link to my Mac (device b
 8. **(Week 5 assignment screenshots) "make sure you cover everything on assignment 5"**
    → Audited the rubric: confirmed public access and that deployment protection is off, restyled login, dashboard and profile to match the rest of the app, and reviewed the code paths for route protection and voting (logged-in vs logged-out).
 
+9. **(pasted instructor feedback from the Feedback Group meeting) "move the daily quests, the weekly rankings, and the XP bar to the profile... center the voting content... also the ability to download, send to a meme page, or delete the meme once a user creates it. Please take care of this."**
+   → Claude moved the XP/level/coins bar off the nav, put Daily Quests and Weekly Rankings on the dashboard and level/rewards on the profile (judgment call: the dashboard was the plainest page, so it became the game hub), and centered the feed. Added Download and Delete (with confirmation) to the meme maker. Found that the database now has RLS on and only admins can add captions or upload to the media bucket, so "send to meme page" for all users was held for approval instead of changing any policies.
+
+10. **"2. all users" / "Do whatever we need in order for users to be able to do it - do whatever we need with the RLS."**
+    → Explicitly allowed new database policies for this feature. Claude added a `community_posts` approval queue (RLS: users insert/see/withdraw only their own pending posts; only admins can approve or reject) and a `community-memes` storage bucket (users can only upload into their own folder). Existing policies were left unchanged. Approved posts are copied into `images` and `captions` by an admin action, so they show up in New, Trending/Top (as people vote) and a new Community tab. Added "Post to meme page" / "Post caption only" in the meme maker, "Your posts" on the dashboard, and an admin-only `/admin/review` page. Migration: `supabase/migrations/0004_community_posts.sql`.
+
 ## What Claude did (implementation summary)
 
 - Performance: optimistic voting and tab switching, `getClaims()`, removed post-vote revalidation.

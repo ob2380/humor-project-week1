@@ -85,6 +85,12 @@ body {
     opacity: 0.6;
   }
 
+  /* Instant tactile feedback the moment the button is pressed. */
+  .chunky-btn:active:not(:disabled) {
+    transform: translateY(3px);
+    box-shadow: none;
+  }
+
   .chunky-btn.is-pressed {
     transform: translateY(3px);
     box-shadow: none;
@@ -102,5 +108,27 @@ body {
 
   .chunky-btn.is-tab-active {
     background: var(--orange);
+  }
+}
+
+/* Quick fade when the feed list changes tabs, so the switch is visible. */
+@keyframes feed-swap-in {
+  from {
+    opacity: 0.35;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.feed-swap {
+  animation: feed-swap-in 140ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .feed-swap {
+    animation: none;
   }
 }

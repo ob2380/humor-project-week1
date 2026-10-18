@@ -1,9 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/auth";
-import { buildFeedRows, getWeeklyRanks, summarizeVotes, type FeedTab } from "@/lib/game";
+import { buildFeedRows, summarizeVotes, type FeedTab } from "@/lib/game";
 import Feed from "@/components/Feed";
-import Mascot from "@/components/Mascot";
-import { MascotLine, QuestPanel } from "@/components/QuestPanel";
+import { communityImageUrl } from "@/lib/community";
 
 export const dynamic = "force-dynamic";
 
@@ -24,19 +23,23 @@ type VoteRow = {
 export default async function Home(props: PageProps<"/">) {
   const searchParams = await props.searchParams;
   const rawTab = typeof searchParams.tab === "string" ? searchParams.tab : "";
-  const tab: FeedTab = rawTab === "new" || rawTab === "top" ? rawTab : "trending";
+  const tab: FeedTab = rawTab === "new" || rawTab === "top" || rawTab === "community" ? rawTab : "trending";
 
   const supabase = await createClient();
   const user = await getCurrentUser();
 
-  const [captionsResult, votesResult, ranks] = await Promise.all([
+  const [captionsResult, votesResult, postsResult] = await Promise.all([
     supabase
       .from("captions")
       .select("id, image_description, caption_text, created_at"),
     supabase
       .from("caption_votes")
       .select("caption_id, profile_id, vote_value, created_at"),
-    user ? getWeeklyRanks(user.id) : Promise.resolve([]),
+    supabase
+      .from("community_posts")
+      .select("caption_id, image_path")
+      .eq("status", "approved")
+      .not("caption_id", "is", null),
   ]);
 
   const error = captionsResult.error?.message ?? votesResult.error?.message ?? null;
@@ -44,55 +47,14 @@ export default async function Home(props: PageProps<"/">) {
   const votes = (votesResult.data ?? []) as VoteRow[];
 
   const { scores, myVotes, myRecent } = summarizeVotes(votes, user?.id ?? null);
-  const rows = buildFeedRows(captions, scores, myVotes, myRecent);
+  const community = new Map<number, string | null>();
+  for (const p of (postsResult.data ?? []) as { caption_id: number; image_path: string | null }[]) {
+    community.set(p.caption_id, p.image_path ? communityImageUrl(p.image_path) : null);
+  }
+  const rows = buildFeedRows(captions, scores, myVotes, myRecent, community);
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-7 px-6 py-8 sm:px-12 lg:flex-row">
-      {/* Left column: quests, rankings, mascot */}
-      <aside className="flex w-full shrink-0 flex-col gap-6 lg:w-80">
-        <QuestPanel signedIn={Boolean(user)} captionCount={captions.length} />
-
-        <section className="window">
-          <h2 className="window-title bg-[#7CC6F0]">Weekly Rankings</h2>
-          {user ? (
-            ranks.length > 0 ? (
-              <ol className="m-0 flex list-none flex-col gap-2 p-3">
-                {ranks.map((r) => (
-                  <li
-                    key={r.rank}
-                    className={`flex items-center gap-2 rounded-[10px] border-[3px] border-ink px-3 py-2 ${
-                      r.isMe ? "bg-[#FFE08A]" : "bg-paper"
-                    }`}
-                  >
-                    <span className="w-7 font-display text-lg font-bold">
-                      {r.rank}
-                    </span>
-                    <span className="flex-1 text-[15px] font-extrabold">
-                      {r.name}
-                    </span>
-                    <span className="text-sm font-bold">
-                      {r.votes} {r.votes === 1 ? "vote" : "votes"}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="p-4 text-sm font-bold">
-                No votes this week yet. Be the first on the board!
-              </p>
-            )
-          ) : (
-            <p className="p-4 text-sm font-bold">Sign in to see the rankings.</p>
-          )}
-        </section>
-
-        <section className="flex items-start gap-3">
-          <Mascot size={64} />
-          <MascotLine signedIn={Boolean(user)} />
-        </section>
-      </aside>
-
-      {/* Main column: tabs + caption cards (tabs switch client-side) */}
+    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col px-6 py-8 sm:px-12">
       <Feed rows={rows} initialTab={tab} signedIn={Boolean(user)} error={error} />
     </main>
   );

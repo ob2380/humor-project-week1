@@ -45,3 +45,16 @@ export const getCurrentProfile = cache(async (): Promise<Profile | null> => {
 export function isProfileComplete(profile: Profile | null) {
   return Boolean(profile?.first_name && profile?.last_name);
 }
+
+/** True when the signed-in user is a superadmin (read from their own profile row). */
+export const getIsSuperadmin = cache(async (): Promise<boolean> => {
+  const user = await getCurrentUser();
+  if (!user) return false;
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("profiles")
+    .select("is_superadmin")
+    .eq("id", user.id)
+    .maybeSingle();
+  return data?.is_superadmin === true;
+});

@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // Routes that require a signed-in user. Checked here for UX (fast redirect
 // before any rendering), and re-checked inside each page/Server Action too —
 // Proxy is not a substitute for authorization at the data-access layer.
-const PROTECTED_PATHS = ["/dashboard", "/profile", "/create"];
+const PROTECTED_PATHS = ["/dashboard", "/profile", "/create", "/admin"];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
