@@ -50,11 +50,9 @@ export function isProfileComplete(profile: Profile | null) {
 export const getIsSuperadmin = cache(async (): Promise<boolean> => {
   const user = await getCurrentUser();
   if (!user) return false;
+  // profiles.is_superadmin isn't readable through the API (users can't see who
+  // is an admin), so ask the security-definer helper the RLS policies use.
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("is_superadmin")
-    .eq("id", user.id)
-    .maybeSingle();
-  return data?.is_superadmin === true;
+  const { data } = await supabase.rpc("is_superadmin");
+  return data === true;
 });
