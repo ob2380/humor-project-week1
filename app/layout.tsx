@@ -3,6 +3,8 @@ import { Fredoka, Nunito } from "next/font/google";
 import NavBar from "@/components/NavBar";
 import { GameProvider } from "@/components/GameProvider";
 import { getPlayerStats } from "@/lib/game";
+import { getCurrentUser } from "@/lib/auth";
+import Tracker from "@/components/Tracker";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -23,7 +25,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
-  const stats = await getPlayerStats();
+  const [stats, user] = await Promise.all([getPlayerStats(), getCurrentUser()]);
 
   return (
     <html
@@ -34,6 +36,14 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <GameProvider initial={stats}>
           <NavBar />
           {children}
+          {user && (
+            <>
+              <Tracker />
+              <p className="px-6 py-3 text-center text-xs font-bold">
+                While you&apos;re signed in, the pages you view, your votes and your meme actions are recorded for the admin dashboard.
+              </p>
+            </>
+          )}
         </GameProvider>
       </body>
     </html>

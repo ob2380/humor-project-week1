@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { deleteMyPost } from "@/app/community/actions";
+import { track } from "@/lib/track";
 
 export default function WithdrawButton({ postId }: { postId: number }) {
   const router = useRouter();
@@ -18,7 +19,10 @@ export default function WithdrawButton({ postId }: { postId: number }) {
           start(async () => {
             const res = await deleteMyPost(postId);
             if (res.error) setError(res.error);
-            else router.refresh();
+            else {
+              track("post_withdrawn");
+              router.refresh();
+            }
           })
         }
         className="chunky-btn"

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { submitPost } from "@/app/community/actions";
+import { track } from "@/lib/track";
 import {
   judgeCaptionsAction,
   lookAtPhotoAction,
@@ -325,6 +326,7 @@ export default function MemeMaker({
 
       setCaptions(final);
       pick(final, 0);
+      track("meme_generated", { meta: { mode: `${isAi ? "ai" : "manual"}_${mode}` } });
     } catch {
       setError("Couldn't generate captions. Please try again.");
     } finally {
@@ -334,6 +336,7 @@ export default function MemeMaker({
 
   /** Throws the current meme away and starts fresh. Nothing is stored on the server. */
   function deleteMeme() {
+    track("meme_deleted");
     setImg(null);
     setPhoto(null);
     setCaptions(null);
@@ -371,6 +374,7 @@ export default function MemeMaker({
         form.append("image", blob, "meme.jpg");
       }
       const res = await submitPost(form);
+      if (res.ok) track("post_submitted", { meta: { with_image: withImage } });
       setPostMsg(
         res.ok
           ? {
@@ -389,6 +393,7 @@ export default function MemeMaker({
   function download() {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    track("meme_downloaded");
     canvas.toBlob((blob) => {
       if (!blob) return;
       const url = URL.createObjectURL(blob);

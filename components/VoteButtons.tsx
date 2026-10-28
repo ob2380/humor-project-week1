@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRef, useState } from "react";
 import { submitVote } from "@/app/vote/actions";
 import { useGame } from "@/components/GameProvider";
+import { track } from "@/lib/track";
 
 type Vote = 1 | -1 | null;
 
@@ -88,6 +89,7 @@ export default function VoteButtons({
         }
         if (result.error) throw new Error(result.error);
         if (current === null) castThisSession.current = true;
+        track(next === null ? "vote_cancel" : "vote", { caption_id: captionId, meta: { value } });
       })
       .catch((e: unknown) => {
         setMyVote(current);
