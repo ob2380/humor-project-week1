@@ -14,17 +14,16 @@ import { TONES, type MemeCaption, type PhotoDescription, type Tone } from "./cap
 // out of quota or missing, captionApi tries FALLBACK_MODELS in order.
 // Override per step with the env vars on the right.
 export const MODELS = {
-  look: "gemini-flash-lite-latest", // GEMINI_MODEL_LOOK
-  write: "gemini-flash-latest", // GEMINI_MODEL_WRITE
-  judge: "gemini-flash-lite-latest", // GEMINI_MODEL_JUDGE
+  look: "gemini-3.5-flash-lite", // GEMINI_MODEL_LOOK
+  write: "gemini-3.5-flash-lite", // GEMINI_MODEL_WRITE
+  judge: "gemini-3.5-flash-lite", // GEMINI_MODEL_JUDGE
 } as const;
 
 export const FALLBACK_MODELS = [
-  "gemini-3.8-flash",
   "gemini-3.5-flash",
-  "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
-  "gemini-2.5-flash",
+  "gemini-3.8-flash",
+  "gemini-flash-lite-latest",
   "gemini-2.5-flash-lite",
 ];
 

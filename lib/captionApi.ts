@@ -77,10 +77,14 @@ async function callGemini(opts: {
         method: "POST",
         headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
         body,
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(12_000),
       });
     } catch {
-      throw new CaptionApiError("failed", `${opts.step}: request failed or timed out`);
+      // Timeout or network error: try the next model instead of giving up.
+      lastStatus = 408;
+      console.error(`[caption:${opts.step}] ${model} timed out or failed`);
+      res = null;
+      continue;
     }
     if (res.ok) break;
     lastStatus = res.status;
@@ -92,7 +96,7 @@ async function callGemini(opts: {
 
   if (!res) {
     throw new CaptionApiError(
-      lastStatus === 429 || lastStatus === 503 ? "busy" : "failed",
+      lastStatus === 429 || lastStatus === 503 || lastStatus === 408 ? "busy" : "failed",
       `${opts.step}: Gemini returned ${lastStatus}`
     );
   }
